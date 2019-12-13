@@ -124,7 +124,7 @@ void processBagfile(string bagfile)
   	applyColorMap(G, cm_img0, COLORMAP_JET);
   	imwrite(out_img, cm_img0); 
   	imshow("statistic pysudo dpth", cm_img0);
-    waitKey(0); 
+    waitKey(3000); 
   }
    
 
@@ -142,7 +142,7 @@ void compute_statics(cv::Mat& G){
 	vector<double> v_std(N, 0); 
 	double max_std = 0; 
 
-	double MAX_STD = 2.2; // so far 
+	double MAX_STD = 0.5; //2.2; // so far 
 
 	for(int r=0; r<row; r++)
 	for(int c=0; c<col; c++)
@@ -150,7 +150,7 @@ void compute_statics(cv::Mat& G){
 		++i;
 		// compte mean and std 
 		vector<double>& v = v_dpts[i];
-		if(v.size() <= 50){
+		if(v.size() <= 100){
 			continue; 
 		}
 		double sum = std::accumulate(std::begin(v), std::end(v), 0.0);
