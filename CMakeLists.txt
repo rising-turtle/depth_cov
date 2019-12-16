@@ -40,3 +40,6 @@ link_directories(${OpenCV_LIBRARY_DIRS})
 
 add_executable(depth_cov src/depth_cov.cpp)
 target_link_libraries(depth_cov ${catkin_LIBRARIES} ${OpenCV_LIBS})
+
+add_executable(grid_point_std src/grid_point_std.cpp)
+target_link_libraries(grid_point_std ${catkin_LIBRARIES} ${OpenCV_LIBS})

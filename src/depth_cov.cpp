@@ -49,7 +49,10 @@ vector<vector<double>> v_dpts; // store repeated depth values
 vector<MU> v_dpt_mean; // store mean depth value 
 vector<bool> v_dpt_valid; // decide whether this point's depth value is valid 
 
-string out_img("output.png"); 
+double g_approximate_std = 0.02; 
+
+string out_img("output"); 
+string mu_img("");
 
 void init(); 
 
@@ -57,7 +60,7 @@ void processBagfile(string bagfile);
 
 void accumulate_data(const cv::Mat& dpt); // store depth data  
 void find_valid(); // find valid points
-void compute_statics(cv::Mat& G);
+void compute_statics(cv::Mat& G, cv::Mat&);
 
 int main(int argc, char* argv[])
 {
@@ -65,7 +68,7 @@ int main(int argc, char* argv[])
   
   ros::NodeHandle nh; 
 
-  ROS_INFO("./depth_cov [bagfile] [*.png]");
+  ROS_INFO("./depth_cov [bagfile] [output_image_name] [appro_std]");
 
   string bagfile = "";
   if(argc >= 2) 
@@ -74,6 +77,12 @@ int main(int argc, char* argv[])
   if(argc >=3)
   	out_img = argv[2]; 
 
+  if(argc >=4)
+  	g_approximate_std = atof(argv[3]); 
+
+  cout<<"g_approximate_std: "<<g_approximate_std<<endl;
+  mu_img = "mu_" + out_img + ".png"; 
+  out_img = out_img+".exr";
   processBagfile(bagfile); 
 
   return 0; 
@@ -112,29 +121,35 @@ void processBagfile(string bagfile)
         accumulate_data(cv_ptrD->image); 
 
         // Holds the colormap version of the image:
-        Mat cm_img0;
-        Mat psudo_grey; 
+        // Mat cm_img0;
+        // Mat psudo_grey; 
         // covert to 8UC1 
-        convertScaleAbs(cv_ptrD->image, psudo_grey, scale); 
+        // convertScaleAbs(cv_ptrD->image, psudo_grey, scale); 
         // Apply the colormap:
-        applyColorMap(psudo_grey, cm_img0, COLORMAP_JET);
+        // applyColorMap(psudo_grey, cm_img0, COLORMAP_JET);
 
         // imshow("dpt_file", cv_ptrD->image); 
-        imshow("pysudo dpth", cm_img0);
+        // imshow("pysudo dpth", cm_img0);
         cout<<"depth_cov.cpp: show "<<++cnt<<" depth data!"<<endl;
-        waitKey(20); 
+        // waitKey(20); 
       }
       if(!ros::ok())
       	break; 
   }
+
+  // remove invalid point
+  find_valid(); 
+
   if(ros::ok()){
-  	cv::Mat G; 
-  	compute_statics(G); 
+  	cv::Mat G, MU; 
+  	compute_statics(G, MU); 
   	Mat cm_img0;
-  	applyColorMap(G, cm_img0, COLORMAP_JET);
-  	imwrite(out_img, cm_img0); 
-  	imshow("statistic pysudo dpth", cm_img0);
-    waitKey(3000); 
+  	// applyColorMap(G, cm_img0, COLORMAP_JET);
+  	imwrite(out_img, G); 
+  	// applyColorMap(MU, cm_img0, COLORMAP_JET); 
+  	// imshow("std pysudo dpth", cm_img0);
+  	imwrite(mu_img, MU);
+    // waitKey(1000); 
   }
    
 
@@ -142,17 +157,22 @@ void processBagfile(string bagfile)
 }
 
 
-void compute_statics(cv::Mat& G){
+void compute_statics(cv::Mat& G, cv::Mat& MU){
 
 	int row = lr - ur + 1; 
 	int col = rc - lc + 1;
-	G = cv::Mat(row, col, CV_8UC1);  
+	// G = cv::Mat(row, col, CV_16UC1);  
+	G = cv::Mat(row, col, CV_32FC1);  
+	MU = cv::Mat(row, col, CV_16UC1);
 	int i=-1; 
 	int N = row*col; 
 	vector<double> v_std(N, 0); 
+	vector<double> v_mean(N, 0); 
 	double max_std = 0; 
 
-	double MAX_STD = 0.5; //2.2; // so far 
+	double MAX_STD = 0.2; //2.2; // so far 
+	double MAX_DIS = 7.5; 
+	int MAX_N = 65535; 
 
 	for(int r=0; r<row; r++)
 	for(int c=0; c<col; c++)
@@ -175,6 +195,7 @@ void compute_statics(cv::Mat& G){
 
 		double stdev = sqrt(accum / (v.size()-1));
 		v_std[i] = stdev;
+		v_mean[i] = m;
 		if(stdev > max_std)
 			max_std = stdev;  
 	}
@@ -194,7 +215,13 @@ void compute_statics(cv::Mat& G){
 		++i;
 		ratio = v_std[i]/MAX_STD; 
 		if(ratio > 1.) ratio = 1.;
-		G.at<unsigned char>(r,c) = (unsigned char)(ratio*255);
+		// G.at<unsigned char>(r,c) = (unsigned char)(ratio*255);
+		// G.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
+		G.at<float>(r,c) = v_std[i]; 
+		ratio = v_mean[i]/MAX_DIS; 
+		if(ratio > 1.) ratio = 1;
+		// MU.at<unsigned char>(r,c) = (unsigned char)(ratio*MAX_N);
+		MU.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
 	}
 	return ; 
 }
@@ -207,6 +234,7 @@ void find_valid(){ // find valid points
 	int ws = 3; 
 	int COL = rc-lc+1; 
 	int thre_num = (int)((ws*2+1)*(ws*2+1)/3);
+	double thre_dis = 10*g_approximate_std; 
 	// cout<<" v_dpts.size(): "<<v_dpts.size()<<endl;  
 	for(int r=ur; r<=lr; r++)
 	for(int c=lc; c<=rc; c++)
@@ -238,7 +266,7 @@ void find_valid(){ // find valid points
 
 		if(inv_num >= thre_num) 
 			v_dpt_valid[inx] = false; 
-		else if(max_dis - min_dis > 0.2){
+		else if(max_dis - min_dis > thre_dis){
 			v_dpt_valid[inx] = false;
 		}
 	}
