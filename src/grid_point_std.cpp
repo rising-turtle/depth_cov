@@ -67,6 +67,11 @@ int main(int argc, char* argv[])
   return 0; 
 }
 
+void grid_points_std()
+{
+		
+}
+
 void central_point_std()
 {
 	vector<double> v_std; 
@@ -112,8 +117,8 @@ void central_point_std()
 			v_std.push_back(std); 
 			v_dis.push_back(dis); 
 		}else{
-			v_std.push_back(0); 
-			v_dis.push_back(0); 
+			// v_std.push_back(0); 
+			// v_dis.push_back(0); 
 		}
 	}
 	loc L; L.r= cr; L.c=cc;
@@ -122,11 +127,6 @@ void central_point_std()
 	sv.push_back(L); 
 	output_func(sv);
 	return ; 
-}
-
-void grid_points_std()
-{
-
 }
 
 bool output_func(vector<loc>& pt_stats)
@@ -140,7 +140,7 @@ bool output_func(vector<loc>& pt_stats)
 
 	for(int i=0; i<pt_stats.size(); i++){
 		loc& l = pt_stats[i]; 
-		ouf<<l.r<<"\t"<<l.c<<"\t"; 
+		ouf<<l.r<<"\t"<<l.c<<"\t"<<l.dis.size()<<"\t"; 
 		for(int m=0; m<l.dis.size(); m++){
 			ouf<<l.dis[m]<<"\t";
 		}
