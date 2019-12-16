@@ -1,8 +1,8 @@
 /*
 	
-	Dec. 12, 2019, He Zhang, hzhang8@vcu.edu 
+	Dec. 15, 2019, He Zhang, hzhang8@vcu.edu 
 
-	analyze depth's data covariance with different  
+	estimate std for a bunch of grid points   
 
 */
 
@@ -128,6 +128,7 @@ void processBagfile(string bagfile)
       	break; 
   }
   if(ros::ok()){
+  	find_valid();
   	cv::Mat G; 
   	compute_statics(G); 
   	Mat cm_img0;
@@ -163,8 +164,6 @@ void compute_statics(cv::Mat& G){
 		if(v.size() <= 100){
 			continue; 
 		}
-		if(!v_dpt_valid[i])
-			continue;
 		double sum = std::accumulate(std::begin(v), std::end(v), 0.0);
 		double m =  sum / v.size();
 
@@ -226,7 +225,7 @@ void find_valid(){ // find valid points
 			dis = v_dpt_mean[cur_inx].mean; 
 
 			if(dis <= 0.5) {
-				inv_num++; 
+				inv_num++
 				continue; 
 			}
 			val_num++;
