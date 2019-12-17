@@ -9,6 +9,8 @@
 #pragma once
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>  
+#include <algorithm>
+#include <vector>
 
 template<typename T>
 T getMean(cv::Mat& M, int r, int c, int w)
@@ -35,4 +37,40 @@ T getMean(cv::Mat& M, int r, int c, int w)
 		mu = sum/cnt; 
 	}
 	return T(mu); 
+}
+
+template<typename T>
+T getMedian(cv::Mat& M, int r, int c, int w)
+{
+	int rr = M.rows; 
+	int cc = M.cols; 
+
+	T me = 0; 
+	std::vector<T> vs;
+
+	for(int y=r-w; y<=r+w; y++)
+	for(int x=c-w; x<=c+w; x++){
+		if(x< 0 || x>= cc || y<0 || y>=rr)
+			continue; 
+
+		T v = M.at<T>(y,x); 
+		if(v > T(0)){
+			vs.push_back(v);
+		}
+	}
+	if(vs.size() > 0){
+
+		if(vs.size() == 1)
+			me = vs[0];
+		else{
+			std::sort(vs.begin(), vs.end()); 
+			if(vs.size() & 0x01){
+				// old 
+				me = vs[vs.size()/2]; 
+			}else{
+				me = (vs[vs.size()/2-1]+vs[vs.size()/2])/2;
+			}
+		}
+	}
+	return T(me); 
 }
