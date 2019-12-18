@@ -42,12 +42,14 @@ struct MU{
 
 struct poly{
 	poly(double para[3]){
-		a = para[0]; b = para[1]; c = para[2]; 
+		a1 = para[0]; a2 = para[1]; a3 = para[2]; 
 	}
+	poly(){}
 	double y(double x){
-		return (a*x*x + b*x+c);
+		return (a1*x*x + a2*x+a3);
 	}
-	double a,b,c; 
+	double a1,a2,a3;
+	int r,c; 
 };
 
 // range of interest 
@@ -62,8 +64,12 @@ vector<MU> v_dpt_mean; // store mean depth value
 string mt_img("monte_carlo.png"); 
 string gmm_img("gmm.png");
 string ori_img("ori.png");
+string grid_point_fname("");
+bool is_grid_pts_available = false;
+vector<poly> v_grid_poly;   
 
 void init(); 
+bool init_grid_pt();
 
 void processBagfile(string bagfile); 
 
@@ -71,8 +77,8 @@ void accumulate_data(const cv::Mat& dpt); // store depth data
 void compute_statics(cv::Mat& G, cv::Mat&);
 
 cv::Mat predict_sigma(const cv::Mat& dpt);
+cv::Mat predict_grid_point(const cv::Mat& dpt); 
 cv::Mat gmm_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma);
-
 cv::Mat covert_to_color(cv::Mat& );
 
 int main(int argc, char* argv[])
@@ -81,11 +87,14 @@ int main(int argc, char* argv[])
   
   ros::NodeHandle nh; 
 
-  ROS_INFO("./gmm_depth [bagfile]");
+  ROS_INFO("./gmm_depth [bagfile] [grid_point.log]");
 
   string bagfile = "";
   if(argc >= 2) 
     bagfile = argv[1]; 
+	
+  if(argc >= 3)
+  	grid_point_fname= argv[2]; 
 
   processBagfile(bagfile); 
 
@@ -109,6 +118,8 @@ void processBagfile(string bagfile)
 
   init();
 
+  is_grid_pts_available = init_grid_pt(); 
+
   // covert 16uc1 to 8uc1
   // dis = u16_d * 0.001
   // u8_d = dis / 7. * 255
@@ -126,7 +137,12 @@ void processBagfile(string bagfile)
         if(first){
 
         	// predict sigma 
-        	cv::Mat prd = predict_sigma(cv_ptrD->image);
+        	cv::Mat prd; 
+        	if(is_grid_pts_available){
+        		prd = predict_grid_point(cv_ptrD->image);
+        	}else{
+        		prd = predict_sigma(cv_ptrD->image);
+        	}
 
         	// gmm 
         	cv::Mat gmm = gmm_sigma(cv_ptrD->image, prd); 
@@ -136,7 +152,10 @@ void processBagfile(string bagfile)
         	cv::Mat gmm_img = covert_to_color(gmm); 
 
         	// save them 
-        	cv::imwrite("prd_img.png", prd_img); 
+        	if(is_grid_pts_available){
+        		cv::imwrite("grid_prd_img.png", prd_img);
+        	}else
+        		cv::imwrite("prd_img.png", prd_img); 
         	cv::imwrite("gmm_img.png", gmm_img); 
 
         	// cv::imwrite("prd_data.exr", prd);
@@ -169,7 +188,60 @@ void processBagfile(string bagfile)
   return ; 
 }
 
+cv::Mat predict_grid_point(const cv::Mat& dpt)
+{
+	int cols = rc - lc + 1; 
+	int rows = lr - ur + 1; 
+	int GRID_SIZE = 10; // equal to that in grid_point_std.cpp 
+	cv::Mat sigma_img(rows, cols, CV_32FC1, Scalar(0.)); 
 
+	// 35*44 = 1540, grid point 
+	int X = 44; 
+	int Y = 35; 
+
+	// central point's parameters
+	double para[3]={0.00155816, -0.00362021, 0.00452812};
+	poly central_pt_predictor(para); 
+
+	for(int r=0; r<rows; r++)
+	for(int c=0; c<cols; c++){
+		double dis = dpt.at<unsigned short>(r+ur, c+lc)*0.001; 
+		double sigma; 
+		if(dis <= 0.5) sigma = 0; 
+		else{
+			// find out neighboring 
+			int lx = r/GRID_SIZE; 
+			int ly = r/GRID_SIZE; 
+
+			// weighted 
+			double sum_w = 0; 
+			vector<double> weights; 
+			vector<double> v_std; 
+			for(int y=ly-1; y<=ly; y++)
+				for(int x=lx-1; x<=lx; x++){
+					if(x<0 || x>=X || y<0 || y>=Y)
+						continue; 
+					int inx = y*X + x; 
+					double std = v_grid_poly[inx].y(dis);
+					double w = fabs(r-(y+1)*GRID_SIZE) + fabs(c-(x+1)*GRID_SIZE);
+					weights.push_back(w);
+					v_std.push_back(std); 
+					sum_w += w;
+				}
+			if(sum_w == 0){
+				// use central point instead
+				sigma = central_pt_predictor.y(dis);
+			}else{
+				sigma = 0; 
+				for(int i=0; i<v_std.size(); i++){
+					sigma += (1-weights[i]/sum_w)*v_std[i];
+				}
+			}
+		}
+		sigma_img.at<float>(r,c) = sigma;
+	}	
+
+}
 cv::Mat predict_sigma(const cv::Mat& dpt)
 {
 	int cols = rc - lc + 1; 
@@ -319,6 +391,33 @@ void accumulate_data(const cv::Mat& dpt){
 			v_dpt_mean[inx].mean = (dis+v_dpt_mean[inx].sum())/(++v_dpt_mean[inx].num);
 		}
 	}
+}
+
+bool init_grid_pt()
+{
+	ifstream inf(grid_point_fname.c_str()); 
+
+	if(!inf.is_open()){
+		cout<<"gmm_depth: cannot found grid_point file: "<<grid_point_fname<<endl; 
+		return false; 
+	}
+
+	char buf[4096];
+	while(inf.getline(buf, 4096)){
+		poly gp; 
+		double lr, lc; 
+		sscanf(buf, "%lf %lf %lf %lf %lf", &lr, &lc, &gp.a1, &gp.a2, &gp.a3); 
+		gp.r = lr; 
+		gp.c = lc; 
+		if(v_grid_poly.size() < 10){
+			printf("read %d %d %f %f %f \n", lr, lc, gp.a1, gp.a2, gp.a3);
+		}
+		v_grid_poly.push_back(gp);
+	}
+
+	printf("read %d grid points\n", v_grid_poly.size()); 
+
+	return true; 
 }
 
 void init()

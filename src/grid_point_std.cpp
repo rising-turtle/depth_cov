@@ -77,7 +77,7 @@ void grid_points_std()
 	double MAX_DIS = 7.5; 
 	int MAX_N = 65535; 
 
-	int GRID_SIZE = 10;
+	int GRID_SIZE = 10; 
 	vector<loc> v_loc = init_loc(GRID_SIZE);
 
 	for(int d=60; d<=700; d+=20){
