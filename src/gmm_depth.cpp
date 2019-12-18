@@ -81,6 +81,8 @@ cv::Mat predict_grid_point(const cv::Mat& dpt);
 cv::Mat gmm_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma);
 cv::Mat covert_to_color(cv::Mat& );
 
+double rmse_diff(cv::Mat& d1, cv::Mat& d2);
+
 int main(int argc, char* argv[])
 {
   ros::init(argc, argv, "gmm_depth");
@@ -105,7 +107,9 @@ void processBagfile(string bagfile)
 {
   std::vector<std::string> topics;
   string dpt_tpc = "/cam0/depth"; 
+  string rgb_tpc = "/cam0/color"; 
   topics.push_back(dpt_tpc); 
+  topics.push_back(rgb_tpc); 
   
   rosbag::Bag bag; 
   bag.open(bagfile, rosbag::bagmode::Read); 
@@ -126,10 +130,22 @@ void processBagfile(string bagfile)
   double scale = 0.001/7.*255; 
 
   static bool first = true; 
-  BOOST_FOREACH(rosbag::MessageInstance const m, view)
-  {
-      if(m.getTopic() == dpt_tpc || ("/"+m.getTopic()) == dpt_tpc)
-      {
+  cv::Mat prd; 
+  cv::Mat gmm; 
+  BOOST_FOREACH(rosbag::MessageInstance const m, view){
+
+  	  if(m.getTopic() == rgb_tpc || ("/"+m.getTopic()) == rgb_tpc){
+  	  	static bool first1 = true; // only save once 
+  	  	if(first1){
+  	  		// receive a rgb image
+  	  		sensor_msgs::ImageConstPtr simage = m.instantiate<sensor_msgs::Image>();
+  	  	 	cv_bridge::CvImageConstPtr cv_ptrRGB = cv_bridge::toCvShare(simage, sensor_msgs::image_encodings::TYPE_8UC3); 
+
+	      	// imshow("rgb_file", rgb); 
+        	imwrite("rgb.png", cv_ptrRGB->image); 
+  	  		first1 = false; 
+  	  	} 
+  	  }else if(m.getTopic() == dpt_tpc || ("/"+m.getTopic()) == dpt_tpc){
         // receive a dpt image
         sensor_msgs::ImageConstPtr simage = m.instantiate<sensor_msgs::Image>();
         cv_ptrD = cv_bridge::toCvShare(simage, sensor_msgs::image_encodings::TYPE_16UC1); 
@@ -137,7 +153,6 @@ void processBagfile(string bagfile)
         if(first){
 
         	// predict sigma 
-        	cv::Mat prd; 
         	if(is_grid_pts_available){
         		prd = predict_grid_point(cv_ptrD->image);
         	}else{
@@ -145,7 +160,7 @@ void processBagfile(string bagfile)
         	}
 
         	// gmm 
-        	cv::Mat gmm = gmm_sigma(cv_ptrD->image, prd); 
+        	gmm = gmm_sigma(cv_ptrD->image, prd); 
 
         	// convert to pysudo color image 
         	cv::Mat prd_img = covert_to_color(prd); 
@@ -154,9 +169,11 @@ void processBagfile(string bagfile)
         	// save them 
         	if(is_grid_pts_available){
         		cv::imwrite("grid_prd_img.png", prd_img);
-        	}else
+        		cv::imwrite("gmm_gp_img.png", gmm_img); 
+        	}else{
         		cv::imwrite("prd_img.png", prd_img); 
-        	cv::imwrite("gmm_img.png", gmm_img); 
+        		cv::imwrite("gmm_cp_img.png", gmm_img); 
+        	}
 
         	// cv::imwrite("prd_data.exr", prd);
         	// cv::imwrite("gmm_data.exr", gmm); 
@@ -176,6 +193,13 @@ void processBagfile(string bagfile)
   if(ros::ok()){
   	cv::Mat G, MU; 
   	compute_statics(G, MU); 
+
+  	double rmse_prd = rmse_diff(G, prd); 
+  	double rmse_gmm = rmse_diff(G, gmm);
+
+  	ROS_INFO("gmm_depth.cpp: rmse_prd: %lf", rmse_prd);
+  	ROS_INFO("gmm_depth.cpp: rmse_gmm: %lf", rmse_gmm);
+
   	Mat mt_img = covert_to_color(G); 
   	imwrite("mt_img.png", mt_img); 
   	// Mat cm_img0;
@@ -210,7 +234,7 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 		if(dis <= 0.5) sigma = 0; 
 		else{
 			// find out neighboring 
-			int lx = r/GRID_SIZE; 
+			int lx = c/GRID_SIZE; 
 			int ly = r/GRID_SIZE; 
 
 			// weighted 
@@ -223,10 +247,17 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 						continue; 
 					int inx = y*X + x; 
 					double std = v_grid_poly[inx].y(dis);
-					double w = fabs(r-(y+1)*GRID_SIZE) + fabs(c-(x+1)*GRID_SIZE);
+
+					// TODO: Test which weighting method is better 
+					// double w = fabs(r-(y+1)*GRID_SIZE) + fabs(c-(x+1)*GRID_SIZE);
+					double w = SQ(fabs(r-(y+1)*GRID_SIZE)) + SQ(fabs(c-(x+1)*GRID_SIZE));
+					if(w==0) w =1;
+					else w = 1./sqrt(w);
 					weights.push_back(w);
 					v_std.push_back(std); 
 					sum_w += w;
+					// cout <<"r: "<<r<<" c: "<<c<<" x: "<<x<<" y: "<<y<<" inx: "<<inx<<" v_grid: "<<v_grid_poly[inx].r 
+					//	<<v_grid_poly[inx].c<<" "<<v_grid_poly[inx].a1<<" "<<v_grid_poly[inx].a2<<" "<<v_grid_poly[inx].a3<<endl;
 				}
 			if(sum_w == 0){
 				// use central point instead
@@ -234,13 +265,13 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 			}else{
 				sigma = 0; 
 				for(int i=0; i<v_std.size(); i++){
-					sigma += (1-weights[i]/sum_w)*v_std[i];
+					sigma += (weights[i]/sum_w)*v_std[i];
 				}
 			}
 		}
 		sigma_img.at<float>(r,c) = sigma;
 	}	
-
+	return sigma_img;
 }
 cv::Mat predict_sigma(const cv::Mat& dpt)
 {
@@ -307,8 +338,8 @@ cv::Mat gmm_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 }
 
 
-void compute_statics(cv::Mat& G, cv::Mat& MU){
-
+void compute_statics(cv::Mat& G, cv::Mat& MU)
+{
 	int row = lr - ur + 1; 
 	int col = rc - lc + 1;
 	// G = cv::Mat(row, col, CV_16UC1);  
@@ -374,8 +405,8 @@ void compute_statics(cv::Mat& G, cv::Mat& MU){
 	return ; 
 }
 
-void accumulate_data(const cv::Mat& dpt){
-	
+void accumulate_data(const cv::Mat& dpt)
+{	
 	double dis; 
 
 	int inx = -1;
@@ -391,6 +422,27 @@ void accumulate_data(const cv::Mat& dpt){
 			v_dpt_mean[inx].mean = (dis+v_dpt_mean[inx].sum())/(++v_dpt_mean[inx].num);
 		}
 	}
+}
+
+double rmse_diff(cv::Mat& d1, cv::Mat& d2)
+{
+	unsigned int cnt = 0; 
+	double sum_se = 0; 
+
+	for(int r=0; r<d1.rows; r++)
+	for(int c=0; c<d1.cols; c++){
+
+		double std1 = d1.at<float>(r,c); 
+		double std2 = d2.at<float>(r,c); 
+
+		if(std1 == 0 || std2 == 0)
+			continue; 
+		sum_se += SQ(std1 - std2); 
+		++cnt;  
+	}
+	double rmse = 0; 
+	if(cnt > 0) rmse = sqrt(sum_se/cnt); 
+	return rmse; 
 }
 
 bool init_grid_pt()
@@ -410,7 +462,8 @@ bool init_grid_pt()
 		gp.r = lr; 
 		gp.c = lc; 
 		if(v_grid_poly.size() < 10){
-			printf("read %d %d %f %f %f \n", lr, lc, gp.a1, gp.a2, gp.a3);
+			// printf("buf: %s\n", buf);
+			// printf("read %lf %lf %lf %lf %lf \n", lr, lc, gp.a1, gp.a2, gp.a3);
 		}
 		v_grid_poly.push_back(gp);
 	}
