@@ -46,6 +46,8 @@ struct poly{
 	}
 	poly(){}
 	double y(double x){
+		if(x <= 0.75)
+			return 0.0007;
 		return (a1*x*x + a2*x+a3);
 	}
 	double a1,a2,a3;
@@ -226,6 +228,7 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 	// central point's parameters
 	double para[3]={0.00155816, -0.00362021, 0.00452812};
 	poly central_pt_predictor(para); 
+	double MAX_SIGMA = 0.055;
 
 	for(int r=0; r<rows; r++)
 	for(int c=0; c<cols; c++){
@@ -247,6 +250,8 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 						continue; 
 					int inx = y*X + x; 
 					double std = v_grid_poly[inx].y(dis);
+					if(std < 0)
+						continue; 
 
 					// TODO: Test which weighting method is better 
 					// double w = fabs(r-(y+1)*GRID_SIZE) + fabs(c-(x+1)*GRID_SIZE);
@@ -256,8 +261,11 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 					weights.push_back(w);
 					v_std.push_back(std); 
 					sum_w += w;
-					// cout <<"r: "<<r<<" c: "<<c<<" x: "<<x<<" y: "<<y<<" inx: "<<inx<<" v_grid: "<<v_grid_poly[inx].r 
-					//	<<v_grid_poly[inx].c<<" "<<v_grid_poly[inx].a1<<" "<<v_grid_poly[inx].a2<<" "<<v_grid_poly[inx].a3<<endl;
+					/*if(std>0.02 || (r>= 103 && r<= 110 && c>= 203 && c<= 210)){
+						cout<<"dis: "<<dis<<" std: "<<std<<endl;
+						cout <<"r: "<<r<<" c: "<<c<<" x: "<<x<<" y: "<<y<<" inx: "<<inx<<" v_grid: "<<v_grid_poly[inx].r 
+						<<v_grid_poly[inx].c<<" "<<v_grid_poly[inx].a1<<" "<<v_grid_poly[inx].a2<<" "<<v_grid_poly[inx].a3<<endl;
+					}*/
 				}
 			if(sum_w == 0){
 				// use central point instead

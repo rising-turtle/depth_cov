@@ -1,0 +1,8 @@
+cp
+[ INFO] [1576698681.660473300]: gmm_depth.cpp: rmse_prd: 0.030432
+[ INFO] [1576698681.660529877]: gmm_depth.cpp: rmse_gmm: 0.030436
+
+gp 
+[ INFO] [1576698699.686137528]: gmm_depth.cpp: rmse_prd: 0.027430
+[ INFO] [1576698699.686203162]: gmm_depth.cpp: rmse_gmm: 0.029719
+
