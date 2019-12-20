@@ -12,7 +12,7 @@ cur_dir=`pwd`
 user_name=`whoami`
 
 # bag_dir="/home/$user_name/work/data/struct_core_cal_v2/cov_test"
-bag_dir="/home/$user_name/work/data/struct_core_cal_v2/cov_testRoom"
+bag_dir="/home/$user_name/work/data/struct_core_cal_v2/cov_room"
 # bags="20cm.bag 40cm.bag 60cm"
 
 cd "$cur_dir/../../../devel/lib/depth_cov"

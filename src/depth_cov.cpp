@@ -50,9 +50,10 @@ vector<MU> v_dpt_mean; // store mean depth value
 vector<bool> v_dpt_valid; // decide whether this point's depth value is valid 
 
 double g_approximate_std = 0.02; 
-
+bool g_inverse_depth = false; 
 string out_img("output"); 
 string mu_img("");
+string pre_fix("");
 
 void init(); 
 
@@ -80,9 +81,21 @@ int main(int argc, char* argv[])
   if(argc >=4)
   	g_approximate_std = atof(argv[3]); 
 
+  if(argc >=5){
+  	cout<<"argv[4]: "<<argv[4]<<endl; 
+  	g_inverse_depth = (string(argv[4])==string("true"));
+  }
+
+  if(g_inverse_depth){
+  	ROS_WARN("depth_cov.cpp: now play with inverse depth !!!!");
+  	pre_fix = "inv_";
+  }else{
+  	ROS_WARN("depth_cov.cpp: in depth !");
+  }
+
   cout<<"g_approximate_std: "<<g_approximate_std<<endl;
-  mu_img = "mu_" + out_img + ".png"; 
-  out_img = out_img+".exr";
+  mu_img = pre_fix + "mu_" + out_img + ".png"; 
+  out_img = pre_fix + out_img+".exr";
   processBagfile(bagfile); 
 
   return 0; 
@@ -105,11 +118,6 @@ void processBagfile(string bagfile)
 
   init();
 
-  // covert 16uc1 to 8uc1
-  // dis = u16_d * 0.001
-  // u8_d = dis / 7. * 255
-  double scale = 0.001/7.*255; 
-
   BOOST_FOREACH(rosbag::MessageInstance const m, view)
   {
       if(m.getTopic() == dpt_tpc || ("/"+m.getTopic()) == dpt_tpc)
@@ -119,19 +127,7 @@ void processBagfile(string bagfile)
         cv_ptrD = cv_bridge::toCvShare(simage, sensor_msgs::image_encodings::TYPE_16UC1); 
         // imwrite(d_dpt + "/"+tt.str() +".png", cv_ptrD->image); 
         accumulate_data(cv_ptrD->image); 
-
-        // Holds the colormap version of the image:
-        // Mat cm_img0;
-        // Mat psudo_grey; 
-        // covert to 8UC1 
-        // convertScaleAbs(cv_ptrD->image, psudo_grey, scale); 
-        // Apply the colormap:
-        // applyColorMap(psudo_grey, cm_img0, COLORMAP_JET);
-
-        // imshow("dpt_file", cv_ptrD->image); 
-        // imshow("pysudo dpth", cm_img0);
         cout<<"depth_cov.cpp: show "<<++cnt<<" depth data!"<<endl;
-        // waitKey(20); 
       }
       if(!ros::ok())
       	break; 
@@ -172,6 +168,7 @@ void compute_statics(cv::Mat& G, cv::Mat& MU){
 
 	double MAX_STD = 0.2; //2.2; // so far 
 	double MAX_DIS = 7.5; 
+	double MAX_INV_DIS = 1/0.6;
 	int MAX_N = 65535; 
 
 	for(int r=0; r<row; r++)
@@ -185,6 +182,7 @@ void compute_statics(cv::Mat& G, cv::Mat& MU){
 		}
 		if(!v_dpt_valid[i])
 			continue;
+
 		double sum = std::accumulate(std::begin(v), std::end(v), 0.0);
 		double m =  sum / v.size();
 
@@ -218,7 +216,13 @@ void compute_statics(cv::Mat& G, cv::Mat& MU){
 		// G.at<unsigned char>(r,c) = (unsigned char)(ratio*255);
 		// G.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
 		G.at<float>(r,c) = v_std[i]; 
-		ratio = v_mean[i]/MAX_DIS; 
+		// ratio = v_mean[i]/MAX_DIS; 
+
+		if(g_inverse_depth)
+			ratio = v_mean[i]/MAX_INV_DIS; 
+		else
+			ratio = v_mean[i]/MAX_DIS; 
+
 		if(ratio > 1.) ratio = 1;
 		// MU.at<unsigned char>(r,c) = (unsigned char)(ratio*MAX_N);
 		MU.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
@@ -253,9 +257,12 @@ void find_valid(){ // find valid points
 			int cur_inx = (rr-ur)*COL + (cc-lc+1); 
 			dis = v_dpt_mean[cur_inx].mean; 
 
-			if(dis <= 0.5) {
+			if(!g_inverse_depth && dis <= 0.5) {
 				inv_num++; 
 				continue; 
+			}else if(g_inverse_depth && dis >= (1./0.5)){
+				inv_num++;
+				continue;
 			}
 			val_num++;
 			if(max_dis < dis) max_dis = dis; 
@@ -284,6 +291,10 @@ void accumulate_data(const cv::Mat& dpt){
 		dis = dpt.at<unsigned short>(r,c)*0.001; 
 		++inx; 
 		if(dis >0.5){
+
+			if(g_inverse_depth)
+				dis = 1./dis; 
+
 			// cout<<"inx: "<<inx<<endl;
 			v_dpts[inx].push_back(dis); 
 			v_dpt_mean[inx].mean = (dis+v_dpt_mean[inx].sum())/(++v_dpt_mean[inx].num);

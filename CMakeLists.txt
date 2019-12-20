@@ -46,3 +46,10 @@ target_link_libraries(grid_point_std ${catkin_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable(gmm_depth src/gmm_depth.cpp)
 target_link_libraries(gmm_depth ${catkin_LIBRARIES} ${OpenCV_LIBS})
+
+add_executable(gmm_inv_depth src/gmm_inv_depth.cpp)
+target_link_libraries(gmm_inv_depth ${catkin_LIBRARIES} ${OpenCV_LIBS})
+
+
+add_executable(pt_distribute src/pt_distribute.cpp)
+target_link_libraries(pt_distribute ${catkin_LIBRARIES} ${OpenCV_LIBS})

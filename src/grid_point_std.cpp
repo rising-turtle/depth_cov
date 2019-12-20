@@ -39,9 +39,12 @@ struct loc{
 // int lc = 100;  int rc = 550;
 // int ur = 80;  int lr = 440;
 
+string prefix("");
 string g_central_pt_log("central_point_std.log");
 string g_grid_pt_log("grid_point_std.log");
 string cov_dir("./");  
+
+bool g_inverse_depth=false; 
 
 vector<loc> init_loc(int GRID_SIZE); // grid size 
 void central_point_std(); 
@@ -62,7 +65,19 @@ int main(int argc, char* argv[])
     cov_dir = argv[1]; 
 
   if(argc >=3)
-  	g_central_pt_log = argv[2]; 
+  	g_central_pt_log = argv[2];
+
+  if(argc >=4){
+  	g_inverse_depth = (string(argv[3]) == string("true")); 
+  } 
+
+  if(g_inverse_depth){
+  	ROS_WARN("grid_point_std.cpp: now play with inverse depth !!!!");
+  	prefix = "inv_";
+  	g_central_pt_log = prefix + g_central_pt_log;
+  	g_grid_pt_log = prefix + g_grid_pt_log;
+  }else
+  	ROS_WARN("grid_points_std.cpp: in depth !");
 
   // central_point_std(); // compute the central point's std 
   grid_points_std();
@@ -75,6 +90,7 @@ void grid_points_std()
 	// to be the same with depth_cov.cpp
 	double MAX_STD = 0.2; // 5; //2.2; // so far 
 	double MAX_DIS = 7.5; 
+	double MAX_INV_DIS = 1/0.6;
 	int MAX_N = 65535; 
 
 	int GRID_SIZE = 10; 
@@ -82,8 +98,8 @@ void grid_points_std()
 
 	for(int d=60; d<=700; d+=20){
 		stringstream ss, ss1 ;
-		ss << cov_dir<< "/"<<d<<"cm.exr"; 
-		ss1 << cov_dir<<"/mu_"<<d<<"cm.png"; 
+		ss << cov_dir<< "/"<<prefix<<d<<"cm.exr"; 
+		ss1 << cov_dir<<"/"<<prefix<<"mu_"<<d<<"cm.png"; 
 		cv::Mat cov_img = cv::imread(ss.str().c_str(), IMREAD_ANYCOLOR | IMREAD_ANYDEPTH); 
 		cv::Mat mean_img = cv::imread(ss1.str().c_str(), -1); 
 		// cv::Mat gray; 
@@ -101,11 +117,21 @@ void grid_points_std()
 
 			float std = getMedian<float>(cov_img, r,c,w);
 			unsigned short u_dis = getMedian<unsigned short>(mean_img, r,c,w); 
-			double dis = u_dis * MAX_DIS/MAX_N; 
+			double dis;
+			if(g_inverse_depth)
+				dis = u_dis * MAX_INV_DIS/MAX_N;
+			else
+				dis = u_dis * MAX_DIS/MAX_N; 
 
-			if(dis > 0.5 && std > 0){
-				v_loc[i].dis.push_back(dis);
+			if(!g_inverse_depth && dis > 0.5 && std > 0){
 				v_loc[i].std.push_back(std); 
+				v_loc[i].dis.push_back(dis); 
+			}else if(g_inverse_depth && dis < (1./0.5) && std > 0)
+			{
+				v_loc[i].std.push_back(std); 
+				v_loc[i].dis.push_back(dis); 
+			}else{
+
 			}
 		}
 		cout<<"handle data: "<<ss.str()<<endl; 
@@ -146,13 +172,14 @@ void central_point_std()
 	double MAX_STD = 0.2; // 5; //2.2; // so far 
 	double MAX_DIS = 7.5; 
 	int MAX_N = 65535; 
+	double MAX_INV_DIS = 1/0.6;
 
 	int cr,cc;
 	// 
 	for(int d=60; d<=700; d+=20){
 		stringstream ss, ss1 ;
-		ss << cov_dir<< "/"<<d<<"cm.exr"; 
-		ss1 << cov_dir<<"/mu_"<<d<<"cm.png"; 
+		ss << cov_dir<< "/"<<prefix<<d<<"cm.exr"; 
+		ss1 << cov_dir<<"/"<<prefix<<"mu_"<<d<<"cm.png"; 
 		cv::Mat cov_img = cv::imread(ss.str().c_str(), IMREAD_ANYCOLOR | IMREAD_ANYDEPTH); 
 		cv::Mat mean_img = cv::imread(ss1.str().c_str(), -1); 
 		// cv::Mat gray; 
@@ -171,19 +198,28 @@ void central_point_std()
 		float std = getMean<float>(cov_img, r,c,1); 
 		// double dis = mean_img.at<unsigned short>(r,c)*MAX_DIS/MAX_N; 
 		unsigned short u_dis = getMean<unsigned short>(mean_img, r, c ,1);
-		double dis = u_dis*MAX_DIS/MAX_N;
+		double dis;
+		if(g_inverse_depth){
+			dis = u_dis*MAX_INV_DIS/MAX_N;
+		}
+		else{
+			dis = u_dis*MAX_DIS/MAX_N;
+		}
 
 		// cout<<"d: "<<d<<" dis: "<<dis<<" img_mu: "<<(int)mean_img.at<unsigned short>(r,c)<<" std: "<<std
 		// <<" img_cov: "<<(float)cov_img.at<float>(r,c)<< endl;
 
 		cout<<"d: "<<d<<" dis: "<<dis<<" img_mu: "<<(int)u_dis<<" std: "<<std<<endl;
 
-		if(dis > 0.5 && std > 0){
+		if(!g_inverse_depth && dis > 0.5 && std > 0){
+			v_std.push_back(std); 
+			v_dis.push_back(dis); 
+		}else if(g_inverse_depth && dis < (1./0.5) && std > 0)
+		{
 			v_std.push_back(std); 
 			v_dis.push_back(dis); 
 		}else{
-			// v_std.push_back(0); 
-			// v_dis.push_back(0); 
+
 		}
 	}
 	loc L; L.r= cr; L.c=cc;
@@ -201,7 +237,6 @@ bool output_func(vector<loc>& pt_stats, string out_log)
 		cerr<<"grid_points_std.cpp: failed to open file: "<<out_log<<endl; 
 		return false; 
 	}
-
 
 	for(int i=0; i<pt_stats.size(); i++){
 		loc& l = pt_stats[i]; 
