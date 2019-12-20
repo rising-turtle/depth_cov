@@ -13,7 +13,7 @@
 #include <vector>
 
 template<typename T>
-T getMean(cv::Mat& M, int r, int c, int w)
+T getMean(const cv::Mat& M, int r, int c, int w)
 {
 	int rr = M.rows; 
 	int cc = M.cols; 
@@ -40,7 +40,7 @@ T getMean(cv::Mat& M, int r, int c, int w)
 }
 
 template<typename T>
-T getMedian(cv::Mat& M, int r, int c, int w)
+T getMedian(const cv::Mat& M, int r, int c, int w)
 {
 	int rr = M.rows; 
 	int cc = M.cols; 

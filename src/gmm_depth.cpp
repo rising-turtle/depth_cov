@@ -22,6 +22,7 @@
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
 #include <boost/foreach.hpp>
+#include "get_data.hpp"
 
 using namespace std; 
 using namespace cv; 
@@ -81,6 +82,7 @@ void compute_statics(cv::Mat& G, cv::Mat&);
 cv::Mat predict_sigma(const cv::Mat& dpt);
 cv::Mat predict_grid_point(const cv::Mat& dpt); 
 cv::Mat gmm_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma);
+cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma);
 cv::Mat covert_to_color(cv::Mat& );
 
 double rmse_diff(cv::Mat& d1, cv::Mat& d2);
@@ -162,7 +164,8 @@ void processBagfile(string bagfile)
         	}
 
         	// gmm 
-        	gmm = gmm_sigma(cv_ptrD->image, prd); 
+        	// gmm = gmm_sigma(cv_ptrD->image, prd); 
+        	gmm = gmm_bilateral_sigma(cv_ptrD->image, prd);
 
         	// convert to pysudo color image 
         	cv::Mat prd_img = covert_to_color(prd); 
@@ -306,6 +309,105 @@ cv::Mat predict_sigma(const cv::Mat& dpt)
 	return sigma_img;
 
 }
+
+
+double loss(double d, double mu, double sigma, double local_sigma=1){
+	// if(fabs(d) > 3*sigma) // for edging 
+	//	return 0; 
+	return log(SQ(d)/(2*SQ(mu)*SQ(sigma)*SQ(local_sigma))+1);
+}
+
+cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
+{
+	cv::Mat gmm_sig = predict_sigma.clone();
+	// cv::Mat W = (Mat_<double>(3,3) << 1, 2, 1, 2, 4, 2, 1, 2, 1);
+	cv::Mat W = (Mat_<double>(3,3) << 4, 1, 4, 1, 0, 1, 4, 1, 4);
+
+	for(int r=1; r<predict_sigma.rows-1; r++)
+	for(int c=1; c<predict_sigma.cols-1; c++){
+
+		double mu_z = 0; 
+		double std_sq = 0;
+
+		double sW = 0; 
+
+		double mu_d = dpt.at<unsigned short>(r+ur, c+lc)*0.001; 
+		double std_d = predict_sigma.at<float>(r, c); 
+		if(mu_d <= 0.5 || std_d <= 1e-7) {
+			mu_d = getMean<unsigned short>(dpt, r+ur, c+lc, 3)*0.001;
+			std_d = getMean<float>(predict_sigma, r, c, 3); 
+
+			if(mu_d <= 0.5 || std_d <= 1e-7)
+				continue; 
+		}
+
+		int n_invalid = 1; 
+		double local_std = 1;
+		vector<double> vdpt;  
+
+		if(r>=2 && r<predict_sigma.rows-2 && c>=2 && c<predict_sigma.cols-2){
+		// find out local std 
+		for(int i=0; i<5; i++)
+		for(int j=0; j<5; j++){
+			double mu_ij = dpt.at<unsigned short>(r+ur+i-2, c+lc+j-2)*0.001; 
+			double std_ij = predict_sigma.at<float>(r+i-2, c+j-2);
+			if(mu_ij <= 0.5 || std_ij <= 1e-7){
+				n_invalid++;
+				continue;
+			}
+			vdpt.push_back(mu_ij); 
+		}
+
+		if(vdpt.size() > 1)
+		{
+			double sum = std::accumulate(std::begin(vdpt), std::end(vdpt), 0.0);
+			double m =  sum / vdpt.size();
+
+			double accum = 0.0;
+			std::for_each (std::begin(vdpt), std::end(vdpt), [&](const double d) {
+			    accum += (d - m) * (d - m);
+			});
+
+			double stdev = sqrt(accum / (vdpt.size()-1));
+			local_std = 1*n_invalid + stdev*10;
+		}
+		}
+
+		// find out valid point 
+		for(int i=0; i<3; i++)
+		for(int j=0; j<3; j++){
+			// if((i==2 && j==0) || (i==0 && j==2) || (i==2 && j==2) || (i==0 && j==0))
+			//	continue;
+			double mu_ij = dpt.at<unsigned short>(r+ur+i-1, c+lc+j-1)*0.001; 
+			double std_ij = predict_sigma.at<float>(r+i-1, c+j-1);
+			if(mu_ij <= 0.5 || std_ij <= 1e-7)
+				continue;
+			double w = -W.at<double>(i,j)/2. - loss(mu_ij - mu_d, mu_d, std_d, local_std);  
+			// sW += W.at<double>(i,j);
+			sW += exp(w); 
+		}
+
+		for(int i=0; i<3; i++)
+		for(int j=0; j<3; j++){
+			// if((i==2 && j==0) || (i==0 && j==2) || (i==2 && j==2) || (i==0 && j==0))
+			//	continue;
+			double mu_ij = dpt.at<unsigned short>(r+ur+i-1, c+lc+j-1)*0.001; 
+			double std_ij = predict_sigma.at<float>(r+i-1, c+j-1);
+			if(mu_ij <= 0.5 || std_ij <= 1e-5)
+				continue;
+			double w = -W.at<double>(i,j)/2. - loss(mu_ij - mu_d, mu_d, std_d, local_std);  
+			w = exp(w);
+			// mu_z += W.at<double>(i,j)*mu_ij/sW; 
+			// std_sq += W.at<double>(i,j)*(SQ(std_ij)+SQ(mu_ij))/sW;
+			mu_z += w * mu_ij / sW; 
+			std_sq += w*(SQ(std_ij)+SQ(mu_ij))/sW;
+		}
+		std_sq = std_sq - SQ(mu_z); 
+		gmm_sig.at<float>(r,c) = sqrt(std_sq); 
+	}
+	return gmm_sig;
+}
+
 
 cv::Mat gmm_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 {	
