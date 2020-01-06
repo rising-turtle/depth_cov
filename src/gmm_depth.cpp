@@ -41,6 +41,7 @@ struct MU{
 	int num; 
 };
 
+// depth_sigma = y(depth)
 struct poly{
 	poly(double para[3]){
 		a1 = para[0]; a2 = para[1]; a3 = para[2]; 
