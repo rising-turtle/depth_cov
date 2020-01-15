@@ -257,6 +257,7 @@ cv::Mat predict_grid_point(const cv::Mat& dpt)
 			if(sum_w == 0){
 				// use central point instead
 				sigma = central_pt_predictor.y(dis);
+				// sigma = 0.001;
 			}else{
 				sigma = 0; 
 				for(int i=0; i<v_std.size(); i++){
@@ -286,7 +287,8 @@ cv::Mat predict_sigma(const cv::Mat& dpt)
 		if(dis <= 0.5) sigma = 0; 
 		else{
 			dis = 1./dis; 
-			sigma = predictor.y(dis);
+			// sigma = predictor.y(dis);
+			sigma = 0.0005;
 		}
 		sigma_img.at<float>(r,c) = sigma;
 	}
@@ -294,10 +296,19 @@ cv::Mat predict_sigma(const cv::Mat& dpt)
 
 }
 
-double loss(double d, double mu, double sigma, double local_sigma=1){
-	// if(fabs(d) > 3*sigma) // for edging 
-	//	return 0; 
-	return log(SQ(mu)*SQ(d)/(2*SQ(sigma)*SQ(local_sigma))+1);
+//double loss(double d, double mu, double sigma, double local_sigma=1){
+	//// if(fabs(d) > 3*sigma) // for edging 
+	////	return 0; 
+	// return log(SQ(mu)*SQ(d)/(2*SQ(sigma)*SQ(local_sigma))+1);
+//}
+
+double loss(double delta_lambda, double lambda, double sigma, double local_sigma=1){
+
+	// return log(SQ(delta_lambda)*(SQ(lambda)+1));
+	double scale = 700000; // SQ(0.001); // SQ(0.01);
+	// return log(SQ(delta_lambda)*SQ(lambda)/(scale*SQ(local_sigma))+1);
+	// return log(SQ(delta_lambda)*SQ(lambda)/(scale*SQ(local_sigma)) + 1);
+	return scale*log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)) + 1);
 }
 
 /*
@@ -423,7 +434,7 @@ cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 			});
 
 			double stdev = sqrt(accum / (vdpt.size()-1));
-			local_std = 1*n_invalid + stdev*10;
+			local_std = 2*n_invalid+stdev; // 1*n_invalid + stdev*10;
 		}
 		}
 

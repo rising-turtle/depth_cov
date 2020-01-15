@@ -315,7 +315,10 @@ cv::Mat predict_sigma(const cv::Mat& dpt)
 double loss(double d, double mu, double sigma, double local_sigma=1){
 	// if(fabs(d) > 3*sigma) // for edging 
 	//	return 0; 
-	return log(SQ(d)/(2*SQ(mu)*SQ(sigma)*SQ(local_sigma))+1);
+	// return log(SQ(d)/(2*SQ(mu)*SQ(sigma)*SQ(local_sigma))+1);
+	// return log(SQ(d)/(2*SQ(mu)*SQ(local_sigma))+1);
+	double scale = 0.7;
+	return log(scale*SQ(d)/(SQ(sigma)*SQ(local_sigma))+1);
 }
 
 cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
@@ -370,7 +373,7 @@ cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 			});
 
 			double stdev = sqrt(accum / (vdpt.size()-1));
-			local_std = 1*n_invalid + stdev*10;
+			local_std = 2*n_invalid + stdev;
 		}
 		}
 
