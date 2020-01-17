@@ -420,7 +420,7 @@ cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 				n_invalid++;
 				continue;
 			}
-			vdpt.push_back(mu_ij); 
+			vdpt.push_back(1./mu_ij); 
 		}
 
 		if(vdpt.size() > 1)
