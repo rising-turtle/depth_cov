@@ -53,3 +53,6 @@ target_link_libraries(gmm_inv_depth ${catkin_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable(pt_distribute src/pt_distribute.cpp)
 target_link_libraries(pt_distribute ${catkin_LIBRARIES} ${OpenCV_LIBS})
+
+add_executable(depth_distribute src/depth_distribute.cpp)
+target_link_libraries(depth_distribute ${catkin_LIBRARIES} ${OpenCV_LIBS})
