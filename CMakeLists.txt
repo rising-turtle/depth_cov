@@ -34,6 +34,11 @@ find_package(OpenCV)
 include_directories(${OpenCV_INCLUDE_DIRS})
 link_directories(${OpenCV_LIBRARY_DIRS})
 
+####### Ceres #######
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
+
+
 ###########
 ## Build ##
 ###########
@@ -56,3 +61,14 @@ target_link_libraries(pt_distribute ${catkin_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable(depth_distribute src/depth_distribute.cpp)
 target_link_libraries(depth_distribute ${catkin_LIBRARIES} ${OpenCV_LIBS})
+
+
+###########
+## Ceres ##
+###########
+
+add_executable(test_ceres src/test_ceres.cpp)
+target_link_libraries(test_ceres ${catkin_LIBRARIES} ${CERES_LIBRARIES})
+
+add_executable(solve_lambda src/solve_lambda.cpp)
+target_link_libraries(solve_lambda ${catkin_LIBRARIES} ${CERES_LIBRARIES})

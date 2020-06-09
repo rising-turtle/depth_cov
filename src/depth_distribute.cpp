@@ -109,6 +109,9 @@ void processBagfile(string bagfile)
 
         if(first){
 
+        	// save this frame 
+        	cv::imwrite("test.png", cv_ptrD->image);
+
         	first = false; 
         	usleep(1000); 
         	continue; 
