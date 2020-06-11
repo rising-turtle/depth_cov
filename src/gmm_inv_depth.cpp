@@ -75,7 +75,8 @@ bool init_grid_pt();
 void processBagfile(string bagfile); 
 
 void accumulate_data(const cv::Mat& dpt); // store depth data  
-void compute_statics(cv::Mat& G, cv::Mat&);
+// void compute_statics(cv::Mat& G, cv::Mat&);
+void compute_statics(cv::Mat& G);
 
 cv::Mat predict_sigma(const cv::Mat& dpt);
 cv::Mat predict_grid_point(const cv::Mat& dpt); 
@@ -158,8 +159,8 @@ void processBagfile(string bagfile)
         		cv::imwrite("grid_prd_img.png", prd_img);
         		cv::imwrite("gmm_gp_img.png", gmm_img); 
         	}else{
-        		cv::imwrite("prd_img.png", prd_img); 
-        		cv::imwrite("gmm_cp_img.png", gmm_img); 
+        		cv::imwrite("prd_img.png", prd_img); // use central point to assume 
+        		cv::imwrite("gmm_cp_img.png", gmm_img); // use 
         	}
 
         	// cv::imwrite("prd_data.exr", prd);
@@ -170,7 +171,7 @@ void processBagfile(string bagfile)
         	continue; 
         }
         accumulate_data(cv_ptrD->image); 
-        cout<<"depth_cov.cpp: show "<<++cnt<<" depth data!"<<endl;
+        // cout<<"depth_cov.cpp: show "<<++cnt<<" depth data!"<<endl;
         // waitKey(20); 
       }
       if(!ros::ok())
@@ -179,7 +180,8 @@ void processBagfile(string bagfile)
 
   if(ros::ok()){
   	cv::Mat G, MU; 
-  	compute_statics(G, MU); 
+  	// compute_statics(G, MU); 
+  	compute_statics(G); 
 
   	double rmse_prd = rmse_diff(G, prd); 
   	double rmse_gmm = rmse_diff(G, gmm);
@@ -192,8 +194,13 @@ void processBagfile(string bagfile)
 
   	// Mat cm_img0;
   	// applyColorMap(MU, cm_img0, COLORMAP_JET); 
-  	imshow("mean_depth: ", MU);
-    waitKey(2000); 
+  	// imshow("mean_depth: ", MU);
+    // waitKey(2000); 
+
+  	// cv::Mat std_img = cv::imread("output_std.exr", IMREAD_ANYCOLOR | IMREAD_ANYDEPTH); 
+  	// double tmp = rmse_diff(std_img, gmm); 
+  	// cout <<"tmp : "<<tmp<<endl; 
+
   }
    
 
@@ -400,8 +407,10 @@ cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 			mu_d = getMean<unsigned short>(dpt, r+ur, c+lc, 3)*0.001;
 			std_d = getMean<float>(predict_sigma, r, c, 3); 
 
-			if(mu_d <= 0.5 || std_d <= 1e-7)
+			if(mu_d <= 0.5 || std_d <= 1e-7){
+				gmm_sig.at<float>(r,c) = 0;
 				continue; 
+			}
 		}
 
 		mu_d = 1./mu_d; 
@@ -514,8 +523,62 @@ cv::Mat gmm_sigma(const cv::Mat& dpt, cv::Mat& predict_sigma)
 	return gmm_sig;
 }
 
+void compute_statics(cv::Mat& G)
+{
+	int row = lr - ur + 1; 
+	int col = rc - lc + 1;
+	// G = cv::Mat(row, col, CV_16UC1);  
+	G = cv::Mat(row, col, CV_32FC1);  
+	int i=-1; 
+	int N = row*col; 
+	vector<double> v_std(N, 0); 
+	vector<double> v_mean(N, 0); 
+	double max_std = 0; 
 
-void compute_statics(cv::Mat& G, cv::Mat& MU)
+	for(int r=0; r<row; r++)
+	for(int c=0; c<col; c++)
+	{
+		++i;
+		// compte mean and std 
+		vector<double>& v = v_dpts[i];
+		if(v.size() <= 100){
+			continue; 
+		}
+		double sum = std::accumulate(std::begin(v), std::end(v), 0.0);
+		double m =  sum / v.size();
+
+		double accum = 0.0;
+		std::for_each (std::begin(v), std::end(v), [&](const double d) {
+		    accum += (d - m) * (d - m);
+		});
+
+		double stdev = sqrt(accum / (v.size()-1));
+		v_std[i] = stdev;
+		v_mean[i] = m;
+		if(stdev > max_std)
+			max_std = stdev;  
+	}
+
+	if(max_std <= 0) {
+		cerr <<"what? max_std: "<<max_std<<endl; 
+		return ; 
+	}else{
+		cout<<" max_std: "<<max_std<<endl; 
+	}
+
+	i = -1; 
+	double ratio; 
+	for(int r=0; r<row; r++)
+	for(int c=0; c<col; c++)
+	{
+		++i;
+		G.at<float>(r,c) = v_std[i]; 
+	}
+	return ; 
+}
+
+
+/*void compute_statics(cv::Mat& G, cv::Mat& MU)
 {
 	int row = lr - ur + 1; 
 	int col = rc - lc + 1;
@@ -582,7 +645,7 @@ void compute_statics(cv::Mat& G, cv::Mat& MU)
 		MU.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
 	}
 	return ; 
-}
+}*/
 
 void accumulate_data(const cv::Mat& dpt)
 {	
@@ -668,7 +731,7 @@ cv::Mat covert_to_color(cv::Mat& d)
 	cv::Mat color= cv::Mat(d.rows, d.cols, CV_8UC1, Scalar(0)); 
 
 	double MAX_STD = 0.055; 
-	double MAX_INV_STD = 0.004; 
+	double MAX_INV_STD = 0.01; //0.004; 
 
 	for(int r=0; r<d.rows; r++)
 	for(int c=0; c<d.cols; c++){

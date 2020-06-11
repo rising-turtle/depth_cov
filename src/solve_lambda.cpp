@@ -46,22 +46,24 @@ string test_file("test.png");
 string true_file("output_std.exr"); 
 
 void do_it(); 
+cv::Mat covert_to_color(cv::Mat& );
+double rmse_diff(cv::Mat& d1, cv::Mat& d2);
 
 struct lambdaResidual {
 	lambdaResidual(cv::Mat& img, cv::Mat& std_img){
 		dpt_img = img; 
-		v_std = fromMatToVector<float>(dpt_img); 
+		v_std = fromMatToVector<float>(std_img); 
 		prd_img = predict_sigma(dpt_img);
 	}
 	//}
 
 	double loss(double delta_lambda, double lambda, double sigma, double local_sigma=1){
 		// return log(SQ(delta_lambda)*(SQ(lambda)+1));
-		double scale = 1; // 700000; // SQ(0.001); // SQ(0.01);
+		double scale = 700000; // SQ(0.001); // SQ(0.01);
 		// return log(SQ(delta_lambda)*SQ(lambda)/(scale*SQ(local_sigma))+1);
-		// return log(SQ(delta_lambda)*SQ(lambda)/(scale*SQ(local_sigma)) + 1);
-		// return scale*log(SQ(delta_lambda)*SQ(lambda) + 1);
-		return (SQ(delta_lambda)*SQ(lambda));
+		// return log(SQ(delta_lambda) + 1);
+		return log(SQ(delta_lambda)*SQ(lambda) + 1);
+		// return (SQ(delta_lambda)*SQ(lambda));
 		// return scale*log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)) + 1);
 	}
 
@@ -76,14 +78,22 @@ struct lambdaResidual {
 		assert(gmm_std.size() == v_std.size()); 
 
 		double res = 0; 
+		int cnt = 0;
 		for(int i=0; i<gmm_std.size(); i++){
 			if(gmm_std[i] > 0){
-				res += SQ(gmm_std[i] - v_std[i]); 
+				res += SQ(gmm_std[i] - v_std[i]);
+				++cnt;  
 			}
 		}
-		residual[0] = sqrt(res); 
+		if(cnt > 0)
+			residual[0] = sqrt(res/cnt); 
+		else 
+			residual[0] = 0; 
 
 		return true; 
+	}
+	cv::Mat output_gmm_image(double lambda){
+		return gmm_bilateral_sigma(dpt_img, prd_img, lambda); 
 	}
 	cv::Mat gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& predict_sigma, double lambda); 
 	cv::Mat predict_sigma(const cv::Mat& dpt);
@@ -91,9 +101,10 @@ struct lambdaResidual {
 	vector<T> fromMatToVector(cv::Mat& m){
 		int N = m.rows*m.cols; 
 		std::vector<T> v(N);
+		int ii = 0; 
 		for(int r=0; r<m.rows; r++)
 			for(int c=0; c<m.cols; c++){
-				v[r*m.cols+c] = m.at<T>(r,c);
+				v[ii++] = m.at<T>(r,c);
 			}
 		return v; 
 	}
@@ -139,8 +150,13 @@ void do_it()
 
 	// solve problem 
 	Problem problem;
+	lambdaResidual * pp =  new lambdaResidual(dpt_img, std_img); 
+
+	cv::Mat pre_opt_img = pp->output_gmm_image(lambda); 
+
   	problem.AddResidualBlock(new ceres::NumericDiffCostFunction<lambdaResidual, ceres::FORWARD, 1, 1>(new lambdaResidual(dpt_img, std_img)), 
-  							NULL, &lambda); 
+  							 new ceres::CauchyLoss(0.02), &lambda); 
+  	problem.SetParameterLowerBound(&lambda, 0, 0);
 
   	Solver::Options options;
   	options.max_num_iterations = 250;
@@ -148,12 +164,29 @@ void do_it()
   	options.minimizer_progress_to_stdout = true;
 
   	Solver::Summary summary;
+  	std::cout << "Initial lambda: " << lambda << "\n";
   	Solve(options, &problem, &summary);
   	std::cout << summary.BriefReport() << "\n";
-  	std::cout << "Initial lambda: " << lambda << "\n";
   	std::cout << "Final   lambda: " << lambda << "\n";
+
+  	cv::Mat pos_opt_img = pp->output_gmm_image(lambda); 
+  
+  	double rmse_pre = rmse_diff(pre_opt_img, std_img); 
+  	double rmse_pos = rmse_diff(pos_opt_img, std_img); 
+  	cout <<"rmse_pre: "<<rmse_pre<<endl; 
+  	cout <<"rmse_pos: "<<rmse_pos<<endl;
+
+  	cv::Mat pre_opt_img_t = covert_to_color(pre_opt_img); 
+  	cv::Mat pos_opt_img_t = covert_to_color(pos_opt_img); 
+
+  	// save image to see output 
+  	cv::imwrite("pre_opt.png", pre_opt_img_t); 
+  	cv::imwrite("pos_opt.png", pos_opt_img_t);
+
   	return 0;
 }
+
+
 
 
 cv::Mat lambdaResidual::gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& predict_sigma, double lambda)
@@ -247,11 +280,35 @@ cv::Mat lambdaResidual::gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& p
 			std_sq += w*(SQ(std_ij)+SQ(mu_ij))/sW;
 		}
 		std_sq = std_sq - SQ(mu_z); 
-		gmm_sig.at<float>(r,c) = sqrt(std_sq); 
+		if(std_sq < 0) {
+			cout <<"what:  std_sq: " <<std_sq<<endl;
+			gmm_sig.at<float>(r,c) = 0; 
+		}else
+			gmm_sig.at<float>(r,c) = sqrt(std_sq); 
 	}
 	return gmm_sig;
 }
 
+double rmse_diff(cv::Mat& d1, cv::Mat& d2)
+{
+	unsigned int cnt = 0; 
+	double sum_se = 0; 
+
+	for(int r=0; r<d1.rows; r++)
+	for(int c=0; c<d1.cols; c++){
+
+		double std1 = d1.at<float>(r,c); 
+		double std2 = d2.at<float>(r,c); 
+
+		if(std1 == 0 || std2 == 0)
+			continue; 
+		sum_se += SQ(std1 - std2); 
+		++cnt;  
+	}
+	double rmse = 0; 
+	if(cnt > 0) rmse = sqrt(sum_se/cnt); 
+	return rmse; 
+}
 
 
 cv::Mat lambdaResidual::predict_sigma(const cv::Mat& dpt)
@@ -260,7 +317,7 @@ cv::Mat lambdaResidual::predict_sigma(const cv::Mat& dpt)
 	int rows = lr - ur + 1; 
 
 	// cv::Mat sigma_img(rows, cols, CV_8UC1, Scalar(0)); 
-	cv::Mat sigma_img(dpt.rows, dpt.cols, CV_32FC1, Scalar(0.)); 	
+	cv::Mat sigma_img(rows, cols, CV_32FC1, Scalar(0.)); 	
 
 	for(int r=0; r<rows; r++)
 	for(int c=0; c<cols; c++){
@@ -274,4 +331,26 @@ cv::Mat lambdaResidual::predict_sigma(const cv::Mat& dpt)
 	}
 	return sigma_img;
 
+}
+
+cv::Mat covert_to_color(cv::Mat& d)
+{
+	cv::Mat color= cv::Mat(d.rows, d.cols, CV_8UC1, Scalar(0)); 
+
+	double MAX_STD = 0.055; 
+	double MAX_INV_STD = 0.01; //0.004; 
+
+	for(int r=0; r<d.rows; r++)
+	for(int c=0; c<d.cols; c++){
+		double std = d.at<float>(r,c); 
+		double ratio = std / MAX_INV_STD;
+		ratio = ratio>1? 1.:ratio;
+		color.at<unsigned char>(r,c) = (unsigned char)( ratio * 255);
+	}
+
+	Mat cm_img0;
+  	applyColorMap(color, cm_img0, COLORMAP_HOT);
+  	// imwrite(out_img, G); 
+
+	return cm_img0;
 }

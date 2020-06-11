@@ -58,8 +58,9 @@ void init();
 void processBagfile(string bagfile); 
 
 void accumulate_data(const cv::Mat& dpt); // store depth data  
-void compute_statics(cv::Mat& G, cv::Mat&);
+void compute_statics(cv::Mat& G);
 cv::Mat covert_to_color(cv::Mat& );
+double rmse_diff(cv::Mat& d1, cv::Mat& d2);
 
 int main(int argc, char* argv[])
 {
@@ -117,7 +118,7 @@ void processBagfile(string bagfile)
         	continue; 
         }
         accumulate_data(cv_ptrD->image); 
-        cout<<"depth_distribute.cpp: show "<<++cnt<<" depth data!"<<endl;
+        // cout<<"depth_distribute.cpp: show "<<++cnt<<" depth data!"<<endl;
         // waitKey(20); 
       }
       if(!ros::ok())
@@ -125,8 +126,8 @@ void processBagfile(string bagfile)
   }
 
   if(ros::ok()){
-  	cv::Mat G, MU; 
-  	compute_statics(G, MU); 
+  	cv::Mat G; 
+  	compute_statics(G); 
 
   	// double rmse_prd = rmse_diff(G, prd); 
   	// double rmse_gmm = rmse_diff(G, gmm);
@@ -141,32 +142,25 @@ void processBagfile(string bagfile)
 
   	// Mat cm_img0;
   	// applyColorMap(MU, cm_img0, COLORMAP_JET); 
-  	imshow("mean_depth: ", MU);
-    waitKey(2000); 
+  	// imshow("mean_depth: ", MU);
+    // waitKey(2000); 
   }
    
 
   return ; 
 }
 
-void compute_statics(cv::Mat& G, cv::Mat& MU)
+void compute_statics(cv::Mat& G)
 {
 	int row = lr - ur + 1; 
 	int col = rc - lc + 1;
 	// G = cv::Mat(row, col, CV_16UC1);  
 	G = cv::Mat(row, col, CV_32FC1);  
-	MU = cv::Mat(row, col, CV_16UC1);
 	int i=-1; 
 	int N = row*col; 
 	vector<double> v_std(N, 0); 
 	vector<double> v_mean(N, 0); 
 	double max_std = 0; 
-
-	double MAX_STD = 0.2; //2.2; // so far 
-	double MAX_DIS = 7.5;
-	double MAX_INV_DIS = 1./0.5; 
-	double MAX_INV_STD = 0.002;
-	int MAX_N = 65535; 
 
 	for(int r=0; r<row; r++)
 	for(int c=0; c<col; c++)
@@ -205,15 +199,7 @@ void compute_statics(cv::Mat& G, cv::Mat& MU)
 	for(int c=0; c<col; c++)
 	{
 		++i;
-		ratio = v_std[i]/MAX_INV_STD; 
-		if(ratio > 1.) ratio = 1.;
-		// G.at<unsigned char>(r,c) = (unsigned char)(ratio*255);
-		// G.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
 		G.at<float>(r,c) = v_std[i]; 
-		ratio = v_mean[i]/MAX_INV_DIS; 
-		if(ratio > 1.) ratio = 1;
-		// MU.at<unsigned char>(r,c) = (unsigned char)(ratio*MAX_N);
-		MU.at<unsigned short>(r,c) = (unsigned short)(ratio*MAX_N);
 	}
 	return ; 
 }
@@ -275,7 +261,7 @@ cv::Mat covert_to_color(cv::Mat& d)
 	cv::Mat color= cv::Mat(d.rows, d.cols, CV_8UC1, Scalar(0)); 
 
 	double MAX_STD = 0.055; 
-	double MAX_INV_STD = 0.004; 
+	double MAX_INV_STD = 0.01; //0.004; 
 
 	for(int r=0; r<d.rows; r++)
 	for(int c=0; c<d.cols; c++){
