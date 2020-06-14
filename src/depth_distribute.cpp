@@ -54,6 +54,9 @@ string g_mt_file("inv_monte_carlo.png");
 string gmm_img("inv_gmm.png");
 string ori_img("inv_ori.png");
 
+string output_gt_exr("output_std.exr"); 
+string output_gt_img("output_std.png");
+
 void init(); 
 void processBagfile(string bagfile); 
 
@@ -72,7 +75,10 @@ int main(int argc, char* argv[])
   string bagfile = "";
   if(argc >= 2) 
     bagfile = argv[1]; 
-	
+  if(argc >= 3)
+  	output_gt_exr = argv[2]; 
+  if(argc >= 4)
+  	output_gt_img = argv[3];
 
   processBagfile(bagfile); 
 
@@ -136,8 +142,8 @@ void processBagfile(string bagfile)
   	// ROS_INFO("gmm_depth.cpp: rmse_gmm: %lf", rmse_gmm);
 
   	Mat mt_img = covert_to_color(G); 
-  	imwrite("output_std.exr", G); 
-  	imwrite("output_std.png", mt_img); 
+  	imwrite(output_gt_exr.c_str(), G); 
+  	imwrite(output_gt_img.c_str(), mt_img); 
   	// imwrite(g_mt_file.c_str(), mt_img); 
 
   	// Mat cm_img0;
