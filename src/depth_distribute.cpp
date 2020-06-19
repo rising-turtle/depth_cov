@@ -56,6 +56,7 @@ string ori_img("inv_ori.png");
 
 string output_gt_exr("output_std.exr"); 
 string output_gt_img("output_std.png");
+string output_raw_dpt_img("test.png"); 
 
 void init(); 
 void processBagfile(string bagfile); 
@@ -70,7 +71,7 @@ int main(int argc, char* argv[])
   ros::init(argc, argv, "depth_distribute");
   ros::NodeHandle nh; 
 
-  ROS_INFO("./depth_distribute [bagfile] [output_std.exr] [output_std.png]");
+  ROS_INFO("./depth_distribute [bagfile] [output_std.exr] [output_std.png] [output_dpt.png]");
 
   string bagfile = "";
   if(argc >= 2) 
@@ -79,6 +80,8 @@ int main(int argc, char* argv[])
   	output_gt_exr = argv[2]; 
   if(argc >= 4)
   	output_gt_img = argv[3];
+  if(argc >= 5)
+  	output_raw_dpt_img = argv[4]; 
 
   processBagfile(bagfile); 
 
@@ -117,7 +120,7 @@ void processBagfile(string bagfile)
         if(first){
 
         	// save this frame 
-        	cv::imwrite("test.png", cv_ptrD->image);
+        	cv::imwrite(output_raw_dpt_img.c_str(), cv_ptrD->image);
 
         	first = false; 
         	usleep(1000); 

@@ -72,3 +72,9 @@ target_link_libraries(test_ceres ${catkin_LIBRARIES} ${CERES_LIBRARIES})
 
 add_executable(solve_lambda src/solve_lambda.cpp)
 target_link_libraries(solve_lambda ${catkin_LIBRARIES} ${CERES_LIBRARIES})
+
+add_executable(solve_lambda_folder src/solve_lambda_folder.cpp)
+target_link_libraries(solve_lambda_folder ${catkin_LIBRARIES} ${CERES_LIBRARIES})
+
+add_executable(test_std src/test_std.cpp)
+target_link_libraries(test_std ${catkin_LIBRARIES} ${CERES_LIBRARIES})
