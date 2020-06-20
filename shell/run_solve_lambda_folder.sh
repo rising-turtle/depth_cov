@@ -15,11 +15,13 @@ exe_dir="/home/davidz/work/git/depth_cov/build/devel/lib/depth_cov"
 
 folder_name="./tmp"
 num="30"
+lambda="2806800" #"2806800" for inverse depth 
 cd $exe_dir
 
 echo "./run_solve_lambda_folder $folder_name $num"
 # roslaunch $ros_launch_file "error_type:=$err_type" "noise_level:=$noise_level" >/dev/null 2>&1
-./solve_lambda_folder $folder_name $num 
+./solve_lambda_folder $folder_name $num $lambda # just show result 
+# ./solve_lambda_folder $folder_name $num  # compute lambda and show result
 
 cd $cur_dir
 

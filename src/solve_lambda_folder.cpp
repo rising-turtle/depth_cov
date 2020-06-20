@@ -45,7 +45,9 @@ int lr = 440;
 
 string folder_name("./tmp"); 
 int num(10); 
+double g_lambda = 1.;
 
+void show_result(double); 
 void do_it(); 
 cv::Mat covert_to_color(cv::Mat& );
 double rmse_diff(cv::Mat& d1, cv::Mat& d2);
@@ -62,9 +64,14 @@ struct lambdaResidual {
 		// return log(SQ(delta_lambda)*(SQ(lambda)+1));
 		double scale = 700000; // SQ(0.001); // SQ(0.01);
 		// return log(SQ(delta_lambda)*SQ(lambda)/(scale*SQ(local_sigma))+1);
+		// return log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma))+1); // 3.08269e+06
+		return SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)); // 2.8068e+06
+
+		// return log(SQ(delta_lambda)/((SQ(local_sigma)))+1);
 		// return log(SQ(delta_lambda) + 1);
-		return log(SQ(delta_lambda)*SQ(lambda) + 1); // lambda = 181027, 
+		// return log(SQ(delta_lambda)*SQ(lambda) + 1); // lambda = 181027, 
 		// return (SQ(delta_lambda)*SQ(lambda)); // lambda = 188327
+		// return (SQ(delta_lambda)); // lambda = 188327
 		// return log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)) + 1);
 	}
 
@@ -132,6 +139,12 @@ int main(int argc, char* argv[])
   if(argc >= 3)
   	num= atoi(argv[2]); 
 
+  if(argc >= 4){
+  	g_lambda = atof(argv[3]); 
+  	show_result(g_lambda); 
+  	return 0; 
+  }
+
   do_it(); 
 
   return 0; 
@@ -172,7 +185,23 @@ void do_it()
   	std::cout << summary.BriefReport() << "\n";
   	std::cout << "Final   lambda: " << lambda << "\n";
 
-  	for(int i=1; i<=num; i++){
+  	show_result(lambda); 
+  	// cv::Mat pos_opt_img = pp->output_gmm_image(lambda); 
+  
+ 
+  	// cv::Mat pre_opt_img_t = covert_to_color(pre_opt_img); 
+  	// cv::Mat pos_opt_img_t = covert_to_color(pos_opt_img); 
+
+  	// save image to see output 
+  	// cv::imwrite("pre_opt.png", pre_opt_img_t); 
+  	// cv::imwrite("pos_opt.png", pos_opt_img_t);
+
+  	return 0;
+}
+
+void show_result(double lambda)
+{
+	for(int i=1; i<=num; i++){
   		if(i%5 != 0) continue; 
 		stringstream tu_file, te_file; 
 		tu_file<<folder_name<<"/"<<i<<".exr"; 
@@ -193,20 +222,18 @@ void do_it()
   		cout <<"rmse_pre: "<<rmse_pre<<endl; 
   		cout <<"rmse_pos: "<<rmse_pos<<endl;
 
+  		stringstream gmm_of, ext_gmm_of; 
+  		gmm_of<<folder_name<<"/"<<i<<"_gmm.png"; 
+  		ext_gmm_of<<folder_name<<"/"<<i<<"_gmm_ext.png"; 
+
+		cv::Mat gmm_of_img = covert_to_color(gmm_0_img); 
+		cv::Mat ext_gmm_of_img = covert_to_color(pos_opt_img); 
+  		// save image to see output 
+  		cv::imwrite(gmm_of.str().c_str(), gmm_of_img); 
+  		cv::imwrite(ext_gmm_of.str().c_str(), ext_gmm_of_img);
 	}
-  	// cv::Mat pos_opt_img = pp->output_gmm_image(lambda); 
-  
- 
-  	// cv::Mat pre_opt_img_t = covert_to_color(pre_opt_img); 
-  	// cv::Mat pos_opt_img_t = covert_to_color(pos_opt_img); 
 
-  	// save image to see output 
-  	// cv::imwrite("pre_opt.png", pre_opt_img_t); 
-  	// cv::imwrite("pos_opt.png", pos_opt_img_t);
-
-  	return 0;
 }
-
 
 
 
