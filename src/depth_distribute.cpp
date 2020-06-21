@@ -66,6 +66,8 @@ void compute_statics(cv::Mat& G);
 cv::Mat covert_to_color(cv::Mat& );
 double rmse_diff(cv::Mat& d1, cv::Mat& d2);
 
+bool g_inv_depth = false; // true
+
 int main(int argc, char* argv[])
 {
   ros::init(argc, argv, "depth_distribute");
@@ -226,7 +228,8 @@ void accumulate_data(const cv::Mat& dpt)
 		++inx; 
 		if(dis >0.5){
 			// cout<<"inx: "<<inx<<endl;
-			dis = 1./dis; 
+			if(g_inv_depth)
+				dis = 1./dis; // for inverse depth 
 			v_dpts[inx].push_back(dis); 
 			v_dpt_mean[inx].mean = (dis+v_dpt_mean[inx].sum())/(++v_dpt_mean[inx].num);
 		}
@@ -275,7 +278,11 @@ cv::Mat covert_to_color(cv::Mat& d)
 	for(int r=0; r<d.rows; r++)
 	for(int c=0; c<d.cols; c++){
 		double std = d.at<float>(r,c); 
-		double ratio = std / MAX_INV_STD;
+		double ratio; 
+		if(g_inv_depth)
+			ratio = std / MAX_INV_STD;
+		else
+			ratio = std / MAX_STD; 
 		ratio = ratio>1? 1.:ratio;
 		color.at<unsigned char>(r,c) = (unsigned char)( ratio * 255);
 	}

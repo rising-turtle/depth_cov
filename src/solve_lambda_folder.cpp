@@ -37,6 +37,21 @@ using ceres::Solve;
 using namespace std; 
 using namespace cv; 
 
+// depth_sigma = y(depth)
+struct poly{
+	poly(double para[3]){
+		a1 = para[0]; a2 = para[1]; a3 = para[2]; 
+	}
+	poly(){}
+	double y(double x){
+		if(x <= 0.75)
+			return 0.0007;
+		return (a1*x*x + a2*x+a3);
+	}
+	double a1,a2,a3;
+	int r,c; 
+};
+
 // range of interest 
 int lc = 100; 
 int rc = 550;
@@ -46,6 +61,8 @@ int lr = 440;
 string folder_name("./tmp"); 
 int num(10); 
 double g_lambda = 1.;
+
+bool g_is_inv_dis = false; // true; //false; // true
 
 void show_result(double); 
 void do_it(); 
@@ -60,12 +77,14 @@ struct lambdaResidual {
 	}
 	//}
 
-	double loss(double delta_lambda, double lambda, double sigma, double local_sigma=1){
+	double loss_ind(double delta_lambda, double lambda, double sigma, double local_sigma=1){
 		// return log(SQ(delta_lambda)*(SQ(lambda)+1));
 		double scale = 700000; // SQ(0.001); // SQ(0.01);
 		// return log(SQ(delta_lambda)*SQ(lambda)/(scale*SQ(local_sigma))+1);
-		// return log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma))+1); // 3.08269e+06
-		return SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)); // 2.8068e+06
+		return log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma))+1); // 806800 806800 3.08269e+06
+		// return log(SQ(delta_lambda)/(SQ(local_sigma))+1); // 1.37847e+06 
+
+		// return SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)); // 2.8068e+06
 
 		// return log(SQ(delta_lambda)/((SQ(local_sigma)))+1);
 		// return log(SQ(delta_lambda) + 1);
@@ -73,6 +92,13 @@ struct lambdaResidual {
 		// return (SQ(delta_lambda)*SQ(lambda)); // lambda = 188327
 		// return (SQ(delta_lambda)); // lambda = 188327
 		// return log(SQ(delta_lambda)*SQ(lambda)/(SQ(local_sigma)) + 1);
+	}
+
+	double loss_d(double delta_dis, double dis, double dis_sigma, double local_sigma=1){
+		// return SQ(delta_dis)/(SQ(dis_sigma)*SQ(local_sigma)); // not good 
+		// return SQ(delta_dis)/(SQ(dis)*SQ(local_sigma)); // 
+		return log(SQ(delta_dis)/(SQ(dis_sigma)*SQ(local_sigma))+1); // lambda = 1.2 
+		// return log(SQ(delta_dis)/(SQ(dis)*SQ(local_sigma))+1); // lambda = 1.2 
 	}
 
 
@@ -211,15 +237,15 @@ void show_result(double lambda)
 
 		lambdaResidual * pp =  new lambdaResidual(dpt_img, std_img); 		
 		cv::Mat gmm_0_img = pp->output_gmm_image(0); 
-		cv::Mat pre_opt_img = pp->output_gmm_image(1); 
+		// cv::Mat pre_opt_img = pp->output_gmm_image(1); 
 		cv::Mat pos_opt_img = pp->output_gmm_image(lambda); 
 
 		double rmse_gmm_0 = rmse_diff(gmm_0_img, std_img); 
-  		double rmse_pre = rmse_diff(pre_opt_img, std_img); 
+  		// double rmse_pre = rmse_diff(pre_opt_img, std_img); 
   		double rmse_pos = rmse_diff(pos_opt_img, std_img); 
   		cout <<"solve_lambda_folder.cpp: rmse for img: "<<i<<endl;
   		cout <<"rmse_gmm_0: "<<rmse_gmm_0<<endl; 
-  		cout <<"rmse_pre: "<<rmse_pre<<endl; 
+  		// cout <<"rmse_pre: "<<rmse_pre<<endl; 
   		cout <<"rmse_pos: "<<rmse_pos<<endl;
 
   		stringstream gmm_of, ext_gmm_of; 
@@ -261,8 +287,8 @@ cv::Mat lambdaResidual::gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& p
 				continue; 
 			}
 		}
-
-		mu_d = 1./mu_d; 
+		if(g_is_inv_dis)
+			mu_d = 1./mu_d; 
 
 		int n_invalid = 1; 
 		double local_std = 1;
@@ -278,7 +304,11 @@ cv::Mat lambdaResidual::gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& p
 				n_invalid++;
 				continue;
 			}
-			vdpt.push_back(1./mu_ij); 
+
+			if(g_is_inv_dis)
+				vdpt.push_back(1./mu_ij); 
+			else
+				vdpt.push_back(mu_ij);
 		}
 
 		if(vdpt.size() > 1)
@@ -305,8 +335,15 @@ cv::Mat lambdaResidual::gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& p
 			double std_ij = predict_sigma.at<float>(r+i-1, c+j-1);
 			if(mu_ij <= 0.5 || std_ij <= 1e-7)
 				continue;
-			mu_ij = 1./mu_ij; 
-			double w = -W.at<double>(i,j)/2. - lambda * loss(mu_ij - mu_d, mu_d, std_d, local_std);  
+			if(g_is_inv_dis)
+				mu_ij = 1./mu_ij; 
+			// double w = -W.at<double>(i,j)/2. - lambda * loss(mu_ij - mu_d, mu_d, std_d, local_std);  
+			double w; 
+			if(g_is_inv_dis)
+				w = -W.at<double>(i,j)/2. - lambda * loss_ind(mu_ij - mu_d, mu_d, std_d, local_std);  
+			else
+				w = -W.at<double>(i,j)/2. - lambda * loss_d(mu_ij - mu_d, mu_d, std_d, local_std);  
+
 			// sW += W.at<double>(i,j);
 			sW += exp(w); 
 		}
@@ -324,8 +361,14 @@ cv::Mat lambdaResidual::gmm_bilateral_sigma(const cv::Mat& dpt, const cv::Mat& p
 			double std_ij = predict_sigma.at<float>(r+i-1, c+j-1);
 			if(mu_ij <= 0.5 || std_ij <= 1e-7)
 				continue;
-			mu_ij = 1./mu_ij; 
-			double w = -W.at<double>(i,j)/2. - lambda * loss(mu_ij - mu_d, mu_d, std_d, local_std);  
+			if(g_is_inv_dis)
+				mu_ij = 1./mu_ij; 
+			// double w = -W.at<double>(i,j)/2. - lambda * loss(mu_ij - mu_d, mu_d, std_d, local_std);  
+			double w; 
+			if(g_is_inv_dis)
+				w = -W.at<double>(i,j)/2. - lambda * loss_ind(mu_ij - mu_d, mu_d, std_d, local_std);  
+			else
+				w = -W.at<double>(i,j)/2. - lambda * loss_d(mu_ij - mu_d, mu_d, std_d, local_std);  
 			w = exp(w);
 			// mu_z += W.at<double>(i,j)*mu_ij/sW; 
 			// std_sq += W.at<double>(i,j)*(SQ(std_ij)+SQ(mu_ij))/sW;
@@ -380,13 +423,20 @@ cv::Mat lambdaResidual::predict_sigma(const cv::Mat& dpt)
 	// cv::Mat sigma_img(rows, cols, CV_8UC1, Scalar(0)); 
 	cv::Mat sigma_img(rows, cols, CV_32FC1, Scalar(0.)); 	
 
+	// central point's parameters
+	double para[3]={0.00155816, -0.00362021, 0.00452812};
+	poly predictor(para); 
+
 	for(int r=0; r<rows; r++)
 	for(int c=0; c<cols; c++){
 		double dis = dpt.at<unsigned short>(r+ur, c+lc)*0.001; 
 		double sigma; 
 		if(dis <= 0.5) sigma = 0; 
 		else{
-			sigma = 0.0005;
+			if(g_is_inv_dis)
+				sigma = 0.0005;
+			else
+				sigma = predictor.y(dis);
 		}
 		sigma_img.at<float>(r,c) = sigma;
 	}
@@ -404,7 +454,11 @@ cv::Mat covert_to_color(cv::Mat& d)
 	for(int r=0; r<d.rows; r++)
 	for(int c=0; c<d.cols; c++){
 		double std = d.at<float>(r,c); 
-		double ratio = std / MAX_INV_STD;
+		double ratio; 
+		if(g_is_inv_dis)
+			ratio = std / MAX_INV_STD;
+		else
+			ratio = std / MAX_STD; 
 		ratio = ratio>1? 1.:ratio;
 		color.at<unsigned char>(r,c) = (unsigned char)( ratio * 255);
 	}

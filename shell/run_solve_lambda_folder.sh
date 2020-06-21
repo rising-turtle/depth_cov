@@ -15,7 +15,8 @@ exe_dir="/home/davidz/work/git/depth_cov/build/devel/lib/depth_cov"
 
 folder_name="./tmp"
 num="30"
-lambda="2806800" #"2806800" for inverse depth 
+# lambda="806800" #"2806800" #"2806800" for inverse depth 
+lambda="1.2"
 cd $exe_dir
 
 echo "./run_solve_lambda_folder $folder_name $num"
