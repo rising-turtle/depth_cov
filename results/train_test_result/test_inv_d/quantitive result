@@ -1,19 +1,19 @@
 solve_lambda_folder.cpp: rmse for img: 5
 rmse_gmm_0: 0.00455267
-rmse_pos: 0.00257877
+rmse_pos: 0.00256287
 solve_lambda_folder.cpp: rmse for img: 10
 rmse_gmm_0: 0.00618256
-rmse_pos: 0.00282288
+rmse_pos: 0.00275337
 solve_lambda_folder.cpp: rmse for img: 15
 rmse_gmm_0: 0.01373
-rmse_pos: 0.00535325
+rmse_pos: 0.0053215
 solve_lambda_folder.cpp: rmse for img: 20
 rmse_gmm_0: 0.00688923
-rmse_pos: 0.00345708
+rmse_pos: 0.0034327
 solve_lambda_folder.cpp: rmse for img: 25
 rmse_gmm_0: 0.00316465
-rmse_pos: 0.0020277
+rmse_pos: 0.00202019
 solve_lambda_folder.cpp: rmse for img: 30
 rmse_gmm_0: 0.0131786
-rmse_pos: 0.00508832
+rmse_pos: 0.00493964
 
