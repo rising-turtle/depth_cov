@@ -16,7 +16,7 @@ exe_dir="/home/davidz/work/git/depth_cov/build/devel/lib/depth_cov"
 folder_name="./tmp_inv_d"
 num="30"
 lambda_for_depth="inverse_depth" # or inverse_depth
-lambda="1006800" #"806800" #"2806800" for inverse depth
+lambda="1000000" #"806800" #"2806800" for inverse depth
 # lambda="61.63" #"1.2" # for depth
 cd $exe_dir
 
